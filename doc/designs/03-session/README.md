@@ -30,7 +30,7 @@
 
 ## 对外接口（草案）
 
-```python
+```text
 ISessionStore  # append(event) / read(session_id) / search(query) / fork(session_id) / list()
 Session        # 会话句柄：event stream 视图 + 元数据
 Event          # 统一事件模型（type / ts / source / payload / trace_id）

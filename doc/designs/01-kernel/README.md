@@ -29,7 +29,7 @@
 
 ## 对外接口（草案）
 
-```python
+```text
 IContainer   # register(service) / resolve(interface) / override(interface, impl)
 IEventBus    # publish(event) / subscribe(event_type, handler)
 IPluginHost  # mount(plugin) / unmount(plugin) / resolve_dependencies()

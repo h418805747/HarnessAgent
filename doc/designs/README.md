@@ -11,10 +11,10 @@
 | 编号 | 模块 | 文档 | 状态 |
 |---|---|---|---|
 | 01 | Kernel 微内核 | [01-kernel](./01-kernel/README.md) | 骨架 |
-| 02 | Runtime 运行时 | [02-runtime](./02-runtime/README.md) | 骨架 |
+| 02 | Runtime 运行时 | [02-runtime](./02-runtime/README.md) | 草案 |
 | 03 | Session 会话 | [03-session](./03-session/README.md) | 骨架 |
-| 04 | Memory 记忆 | [04-memory](./04-memory/README.md) | 骨架 |
-| 05 | Tools 工具 | [05-tools](./05-tools/README.md) | 骨架 |
+| 04 | Memory 记忆 | [04-memory](./04-memory/README.md) | 草案 |
+| 05 | Tools 工具 | [05-tools](./05-tools/README.md) | 草案 |
 | 06 | Skills 技能 | [06-skills](./06-skills/README.md) | 骨架 |
 | 07 | Plugin 插件 | [07-plugin](./07-plugin/README.md) | 骨架 |
 | 08 | Security 安全 | [08-security](./08-security/README.md) | 骨架 |
@@ -27,6 +27,8 @@
 - **Every run is traceable**：append-only 事件流是唯一真相源。
 - **定制与内核分离**：定制只写 `~/.harness/` 与 `./.harness/`，升级不覆盖。
 - **优先 project > user > bundled**：同名插件可被上层覆盖。
+- **P8 信任根不可卸载**：Security Core 与插件装载权威属内核 TCB，常驻、不可卸载、不对模型暴露；"一切皆插件"只适用于能力，不适用于信任根。
+- **P9 按职责分语言，靠协议解耦**：内核宿主为 **TypeScript（Node/Bun）**，UI 亦为 TS，记忆/嵌入/中文分词走 **Python 辅助进程**，沙箱可下沉 **Rust/WASM**；插件 **语言无关**（MCP / stdio JSON-RPC）。每个语言切换点必须是进程边界 + 协议。
 
 ## 状态说明
 

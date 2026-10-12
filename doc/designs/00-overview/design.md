@@ -66,6 +66,7 @@
 | **P6 显式安全** | 默认最小权限，危险操作需审批，全链路审计 |
 | **P7 契约稳定** | 内核对外 API 语义化版本，插件契约向后兼容，升级不破坏插件 |
 | **P8 信任根不可卸载** | 安全强制点与插件装载权威属内核信任根（TCB），**常驻、不可卸载、不对模型暴露**；"一切皆插件"只适用于能力，不适用于信任根 |
+| **P9 按职责分语言，靠协议解耦** | 不追求单一语言全局最优；每层选生态最强语言，**语言切换点必须是进程边界 + 协议**（JSON-RPC / HTTP / MCP / stdio），禁止在同进程内混语言 |
 
 ---
 
@@ -209,27 +210,66 @@ User Input
 
 ## 6. 技术框架选型
 
+### 6.1 选型原则：按职责分语言，靠协议解耦
+
+**为什么不是单一语言**：Agent 的瓶颈是网络 I/O（LLM API 往返）而非 CPU，**性能不构成选型主导因素**。真正决定的是四项：分发与启动（轻量化）、插件生态与隔离、LLM/数据生态、开发效率——而这几项的生态归属各不相同，单语言无法同时占优。
+
+参照：
+
+- **Hermes**：Python 内核 + **TypeScript**（Ink/React）TUI 前端，中间以 Python JSON-RPC 网关打通。
+- **DSH**：**TypeScript/Node** 内核（Cordis）+ **Python 辅助进程**（sidecar，`dsh-deepmemory` 的 memory-server 走 HTTP `:6230`，做 FAISS / jieba / BM25）；连 Code Mode 中模型写的编排代码也是 TS。
+
+**核心机制**：好的多语言架构本质是**多进程架构**——每个语言切换点都是一个**进程边界 + 协议**（JSON-RPC / HTTP / MCP / stdio）。有边界则语言无关；反之，在同进程内混语言（Python 调 C 扩展、Node 用 N-API）才是复杂度的真正来源。
+
+### 6.2 语言分工
+
+| 层 | 语言 | 理由 |
+|---|---|---|
+| **内核宿主**（01/02/03/07 与编排） | **TypeScript（Node 22+ / Bun）** | 最贴合"PC 端 + 轻量化 + 插件化"三诉求，无结构性短板；npm 插件生态与作者门槛顶级；DSH 的 Cordis 内核即 TS，"service/event 容器"语义可 1:1 借鉴 |
+| **UI / TUI / Web / 桌面** | **TypeScript** | 生态无替代：Ink(React) TUI、Web、Tauri/Electron |
+| **记忆 / 嵌入 / 中文分词辅助进程** | **Python** | jieba、FAISS、fastembed、sentence-transformers 生态垄断（DSH 亦如此） |
+| **沙箱 / 执行 / 原生** | **Rust / WASM** 或 Docker + 子进程 | 强隔离与性能敏感场景下沉 |
+| **插件** | **语言无关**（MCP / stdio JSON-RPC / WASM） | 关键：插件作者可用任意语言 |
+
+### 6.3 技术栈明细
+
 | 领域 | 选型 | 说明 |
 |---|---|---|
-| 语言/运行时 | **Python 3.12+**（asyncio） | 生态成熟、与 Hermes 一致、开发效率高；工作区亦为 Python |
-| 数据模型/校验 | **Pydantic v2** | 事件、配置、工具 schema 的统一建模与校验 |
-| 插件/依赖注入 | **自研轻量容器**（借鉴 Cordis 的 service/event 语义）+ Python `entry_points` | 保持内核极薄，避免重框架 |
-| 事件总线 | 进程内 asyncio pub/sub（预留跨进程/分布式扩展） | 低延迟、无外部依赖 |
-| 存储 | **SQLite（WAL + FTS5）** 默认；可选 Postgres / Redis | 本地优先，全文检索开箱即用 |
-| 向量检索 | **sqlite-vec** 默认；可选 Chroma / 外部向量库 | 长期记忆召回 |
-| 模型接入 | OpenAI 兼容协议为主，多 Provider 插件（Anthropic/OpenRouter/本地 Ollama…） | 统一 Model Adapter |
+| 语言/运行时 | **TypeScript 5.x**（Node 22+ / Bun） | 内核宿主；Bun 支持编译单文件二进制 |
+| 数据模型/校验 | **Zod**；跨语言契约用 **JSON Schema** | 进程内用 Zod 高性能校验，跨进程侧靠 JSON Schema 保证契约 |
+| 插件/依赖注入 | **自研轻量容器**（借鉴 Cordis service/event）+ npm 包 | 保持内核极薄 |
+| 事件总线 | 进程内 EventEmitter pub/sub（预留跨进程） | 低延迟、无外部依赖 |
+| 存储 | **SQLite（WAL + FTS5）** 默认；可选 Postgres / Redis | 本地优先；Node 侧用 better-sqlite3 / node:sqlite |
+| 向量检索 | **sqlite-vec** 默认；由 Python 辅助进程或 Node 扩展提供 | 长期记忆召回 |
+| 模型接入 | OpenAI 兼容协议为主，多 Provider 插件（Anthropic / OpenRouter / 本地 Ollama…） | 统一 Model Adapter；官方 TS SDK |
 | 工具执行沙箱 | 本地子进程 / Docker / SSH / 云沙箱（可插拔后端） | 与 Hermes environments 对齐 |
-| 工具扩展协议 | **MCP**（stdio / SSE / StreamableHTTP） | 复用生态，官方 Python SDK |
-| CLI | **Typer + Rich + prompt_toolkit** | 交互体验与主题化 |
-| TUI | **Textual** | 全屏终端 UI |
-| Web UI | **FastAPI + Uvicorn**，SSE/WebSocket 流式；前端为可选独立包 | 聊天 + 轨迹视图 |
+| 工具扩展协议 | **MCP**（stdio / SSE / StreamableHTTP）+ stdio JSON-RPC | 复用生态；**同时作为语言无关的插件 ABI** |
+| CLI | **Citty/Commander + Ink + ora** | 交互体验与主题化 |
+| TUI | **Ink（React）** | 与 Hermes TUI 同路线，组件化终端 UI |
+| Web UI | **Fastify / Hono + SSE/WebSocket**；前端 React + Vite | 聊天 + 轨迹视图 |
 | 配置 | TOML/YAML + 环境变量 + profile 分层 | 配置与密钥分离 |
-| 可观测 | 结构化 JSON 日志；可选 OpenTelemetry | 分级日志文件 |
-| 打包 | **uv / hatchling → PyPI**；Docker；PyInstaller 单文件 | 多形态分发 |
-| 质量 | pytest / ruff / mypy / pre-commit | 契约与类型安全 |
+| 可观测 | 结构化 JSON 日志（pino）；可选 OpenTelemetry | 分级日志文件，trace_id 跨辅助进程串联 |
+| 打包 | **Bun 单文件二进制**；npm 包；Docker | 多形态分发、轻量化 |
+| 质量 | Vitest / ESLint / tsc / pre-commit | 契约与类型安全 |
 | 文档 | MkDocs（Material） | 设计文档 + 用户手册 |
 
-**选型说明**：DeepSeek Harness 采用 TypeScript/Cordis 内核，Hermes 采用 Python。本项目选择 Python，原因是与工作区技术栈一致、生态完整、且可复用 Hermes 的大量工程实践；若未来需要 Code Mode（模型用一段程序组合工具调用），可通过一个独立的 Node/TS 执行插件桥接，而不改变内核语言。
+### 6.4 引入多语言的代价与约束
+
+- **多套构建 / CI / 依赖管理**：TS 内核 + Python 辅助进程（+ 可选 Rust），需 pnpm/turbo + uv 统一编排。
+- **类型不能跨进程共享**：必须依赖 schema 契约（JSON Schema / protobuf），不能指望编译期共享类型。
+- **跨进程调试与追踪更难**：trace_id 必须贯穿所有辅助进程，日志按 trace 关联。
+- **部署产物变多**：需明确哪些辅助进程默认随附、哪些按需下载。
+
+### 6.5 可逆性（决策不锁死）
+
+本选型**可逆**，由架构本身保证：
+
+1. **插件 ABI 语言无关**（MCP / stdio JSON-RPC / WASM）→ 插件不受宿主语言变更影响。
+2. **内核保持极薄**（容器 / 事件总线 / 插件宿主 / Session）→ 换宿主语言等于换一层薄壳，插件与设计全部保留。
+3. 所有跨模块通信走**接口 + 事件**，不靠进程内直接调用。
+4. 若将来"极致轻量 / 无运行时"成为硬指标，可将内核下沉 **Rust**，TS 与 Python 退化为辅助进程——这是演进路径，不是推倒重来。
+
+**决策记录**：初版曾选 Python 3.12+（理由是生态成熟、与 Hermes 一致、工作区为 Python）。经"PC 端 + 轻量化 + 插件化"三诉求权衡后改为 TypeScript 内核：Python 的分发体积与启动速度是结构性短板，而 Rust 的插件生态与开发效率代价过高。Python 保留在辅助进程层，其不可替代的生态（嵌入 / 分词 / 向量）得以继续利用。
 
 ---
 
@@ -245,7 +285,7 @@ User Input
 | **IDE 集成** | ACP / MCP Server | VS Code / Zed / JetBrains 内直接调用 |
 | **IM Gateway** | 常驻守护进程 | Telegram / Discord / Slack / 飞书 / 钉钉 / 企业微信 / 微信 / QQ |
 | **Headless / 批处理** | `ha run` / batch / cron | 脚本化、CI、定时任务 |
-| **编程式 SDK** | Python API | 被其他程序嵌入调用 |
+| **编程式 SDK** | HTTP/JSON-RPC + TS/Python 客户端 | 被其他程序嵌入调用 |
 
 ### 7.2 人机协作机制
 
@@ -267,15 +307,16 @@ User Input
 
 | 制品 | 形态 | 说明 |
 |---|---|---|
-| **核心 Python 包** | PyPI `harness-agent` | 内核 + 标准模块 + 内置插件 |
-| **CLI 可执行** | `ha`（`pipx` / `uv tool install`） | 主要入口 |
+| **核心 npm 包** | npm `@harness-agent/kernel` | 内核 + 标准模块 + 内置插件 |
+| **CLI 可执行** | `ha`（`npm i -g` / `bun install -g`） | 主要入口 |
+| **单文件二进制** | Windows / macOS / Linux（Bun 编译） | 免 Node 环境，轻量化分发 |
 | **Docker 镜像** | `harnessagent/harness:latest` | 容器化部署与沙箱宿主 |
-| **单文件二进制** | Windows / macOS / Linux | 免 Python 环境（PyInstaller） |
-| **插件 SDK / 脚手架** | PyPI `harness-agent-sdk` + `ha plugin new` | 插件开发模板与类型定义 |
-| **默认插件包 / Preset** | `bundled` 插件 + 运行模式预设 | 对应 Standard / Code / Minimal / Creator 式组合 |
+| **Python 辅助进程包** | PyPI `harness-agent-memory` | 记忆 / 嵌入 / 中文分词辅助进程 |
+| **插件 SDK / 脚手架** | npm `@harness-agent/sdk` + `ha plugin new` | 插件开发模板与类型定义，支持 TS / Python / Rust |
+| **默认插件包 / Preset** | bundled 插件 + 运行模式预设 | 对应 Standard / Code / Minimal / Creator 式组合 |
 | **配置模板** | `profiles/` 与示例 config | 快速初始化 |
 | **文档制品** | MkDocs 站点 + 各模块设计文档 | 设计与使用文档 |
-| **（可选）桌面应用** | Tauri/Electron 壳 | 后期规划 |
+| **（可选）桌面应用** | Tauri 壳 | 后期规划 |
 
 ### 8.1 定制不被覆盖的保障机制
 
@@ -293,21 +334,20 @@ User Input
 
 ```
 HarnessAgent/
-├── src/harness_agent/        # 内核与标准模块源码（只读升级）
-│   ├── kernel/               # 01
-│   ├── runtime/              # 02
-│   ├── session/              # 03
-│   ├── memory/               # 04
-│   ├── tools/                # 05
-│   ├── skills/               # 06
-│   ├── plugin/               # 07
-│   ├── security/             # 08
-│   └── interface/            # 09
-├── plugins/                  # 官方/bundled 插件
-├── profiles/                 # 用户/项目定制（升级不覆盖）
+├── packages/                    # TS 侧（pnpm + turbo）
+│   ├── kernel/                  # 内核与标准模块源码（只读升级）
+│   │   └── src/{kernel,runtime,session,plugin}/    # 01/02/03/07
+│   ├── cli/                     # CLI 入口（ha）
+│   ├── tui/                     # Ink 终端 UI
+│   ├── web/                     # Web UI（Fastify/Hono + React/Vite）
+│   └── sdk/                     # 插件 SDK / 类型定义
+├── sidecars/                    # 非宿主语言辅助进程（进程边界 + 协议）
+│   └── memory-py/               # Python：记忆 / 嵌入 / 中文分词
+├── plugins/                     # 官方/bundled 插件（语言不限）
+├── profiles/                    # 用户/项目定制（升级不覆盖）
 ├── doc/
-│   ├── designs/              # 设计文档（本目录）
-│   └── plans/                # 实施计划
+│   ├── designs/                 # 设计文档（本目录）
+│   └── plans/                   # 实施计划
 ├── tests/
 └── README.md
 ```
@@ -347,10 +387,12 @@ doc/designs/
 
 ## 11. 待定问题（待后续设计确认）
 
-1. **Code Mode**：是否需要模型以"一段程序"组合工具调用？涉及 Node/TS 桥接或 Python 内嵌执行。
+1. **Code Mode**：是否需要模型以"一段程序"组合工具调用？宿主已是 TS，可直接经 Bun 沙箱执行，无需桥接；但需定义其权限与沙箱边界（L3 控制面）。
 2. **多用户/多租户**：首版单用户，是否需要预留多 profile 隔离到进程级。
-3. **长期记忆策略**：写入时机（同步/异步）、召回算法（向量/关键词/混合）、遗忘与合并策略。
+3. **长期记忆策略**：写入时机（同步/异步）、召回算法（向量/关键词/混合）、遗忘与合并策略。→ 已定混合检索方向，待定具体权重与衰减参数。
 4. **技能自生成**：自动生成的触发条件、质量校验与回滚机制。
 5. **Web UI 是否独立仓库**：前端工程化与内核发布节奏的耦合度。
 6. **安全监督进程（supervisor）**：是否需要独立进程守护 TCB，防止同进程内存篡改或强制卸载。
 7. **保护清单可扩展性**：是否允许用户将自研插件加入保护清单（该扩展操作本身须为 L3 控制面操作）。
+8. **内核是否最终下沉 Rust**：在何种指标（体积 / 启动 / 内存）达到阈值时触发；作为演进路径而非重写。
+9. **辅助进程默认随附范围**：Python 记忆辅助进程是默认安装还是按需下载，影响分发体积与"开箱即用"体验。

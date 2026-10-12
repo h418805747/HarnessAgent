@@ -15,7 +15,7 @@
 - IDE 集成（ACP / MCP Server）
 - IM Gateway（多平台常驻守护）
 - Headless / 批处理（`ha run`、batch、cron）
-- 编程式 SDK（Python API）
+- 编程式 SDK（HTTP/JSON-RPC + TS/Python 客户端）
 - 人机协作机制：审批、中断/接管、澄清提问、计划审阅、diff 预览、轨迹检视、会话控制
 
 **不做**：
@@ -32,7 +32,7 @@
 
 ## 对外接口（草案）
 
-```python
+```text
 IInterface    # start() / stop() / send(message) / on_event(event)
 IMessage      # {source, session_key, content, attachments, meta}
 IApprovalUI   # prompt(approval_request) -> Approval

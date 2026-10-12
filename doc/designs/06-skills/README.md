@@ -28,7 +28,7 @@
 
 ## 对外接口（草案）
 
-```python
+```text
 ISkillRegistry  # discover() / list() / get(name) / load(name)
 ISkill          # {name, description, path, metadata, resources}
 SkillLoader     # progressive_load(name) -> SkillBody

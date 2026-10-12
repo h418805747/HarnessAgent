@@ -53,7 +53,7 @@
 
 ## 对外接口（草案）
 
-```python
+```text
 IPluginHost   # discover() / resolve_deps() / status()
               # mount(plugin, authority) / unmount(name, authority)   # authority 必须为控制面
 PluginContext # register_tool / register_service / subscribe / invoke_hook / config

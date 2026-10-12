@@ -140,7 +140,7 @@ T1 是本模块设计的核心驱动威胁。
 
 ## 6. 对外接口（修订）
 
-```python
+```text
 # ---- L1 内核 TCB：常驻，不可卸载 ----
 ISecurityCore
     check(action, ctx) -> Decision{allow|deny|ask, risk, reason}
