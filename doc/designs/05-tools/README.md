@@ -62,6 +62,21 @@ IToolRunner     # run(tool_call, ctx) -> ToolResult
 IExecutionBackend  # exec(command, ctx) -> Result   （local/docker/ssh/cloud）
 ```
 
+## 浏览器工具（browser toolset）与 OpenCLI 调研
+
+调研对象：`@jackwener/opencli`（v2.0.2）。**结论是不引入依赖，只借鉴设计。**
+
+| 借鉴点 | 落地 |
+|---|---|
+| 原语/适配器分层 | toolset 只对外暴露少量稳定原语（navigate / read / click / fill / extract / screenshot）；站点适配器走 Plugin/MCP 通道 |
+| 结果契约 | `{ok,data}` / `{ok,error{code,message,hint}}` + stderr 分离 + 语义化退出码，直接作为 `IToolRunner.run()` 返回约定 |
+| **租约与回收** | 浏览器是有状态稀缺资源：独占租约 + 空闲回收 + 显式释放，与子代理隔离配合（本节原稿缺此块） |
+| 写适配器 = 技能 | recon → init → test 的流程归 `06-skills`，不做内核能力 |
+
+不引入的原因：依赖桌面 Chrome + 扩展 + 本地 daemon（服务器/CI 不可用）；借用用户登录态即权限放大，需 `08-security` 前置拦截；npm `postinstall` 拉脚本存在供应链风险。
+
+详见 [`opencli-notes.md`](./opencli-notes.md)。
+
 ## 依赖
 
 - 内核、Security（执行前判定）、Plugin（工具亦可由插件提供）
