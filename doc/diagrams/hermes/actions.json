@@ -1,5 +1,0 @@
-[
-  ["wait", 500],
-  ["shot", "d:/WorkSpaces/Project/Python/HarnessAgent/doc/diagrams/hermes/shots/fig1-light-full.png", ".iso-figure", 1],
-  ["shot", "d:/WorkSpaces/Project/Python/HarnessAgent/doc/diagrams/hermes/shots/fig1-badges.png", ".iso-plate", 2, [180, 120, 320, 240]]
-]

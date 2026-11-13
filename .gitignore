@@ -219,3 +219,6 @@ __marimo__/
 
 # Local scratch dir (research temp files)
 .tmp/
+
+# project-flow 本地标记（机器状态，不进 git）
+docs/.docflow.json
